@@ -1,0 +1,62 @@
+From b00f4f4d8e0eeb3257d98640276d5baf320ea2c6 Mon Sep 17 00:00:00 2001
+From: "han.liu" <liuhan907@163.com>
+Date: Wed, 10 Mar 2021 17:20:17 +0800
+Subject: [PATCH 2/2] plugin/forward: use sync.Map optimize the performance of
+ the ignored
+
+---
+ plugin/forward/forward.go | 20 ++++++++++++++++----
+ 1 file changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/plugin/forward/forward.go b/plugin/forward/forward.go
+index 5f7d343d..ac039935 100644
+--- a/plugin/forward/forward.go
++++ b/plugin/forward/forward.go
+@@ -8,6 +8,7 @@ import (
+ 	"context"
+ 	"crypto/tls"
+ 	"errors"
++	"sync"
+ 	"sync/atomic"
+ 	"time"
+ 
+@@ -32,8 +33,9 @@ type Forward struct {
+ 	p          Policy
+ 	hcInterval time.Duration
+ 
+-	from    string
+-	ignored []string
++	from       string
++	ignored    []string
++	ignoredMap sync.Map
+ 
+ 	tlsConfig     *tls.Config
+ 	tlsServerName string
+@@ -196,12 +198,22 @@ func (f *Forward) isAllowedDomain(name string) bool {
+ 		return true
+ 	}
+ 
++	value, ok := f.ignoredMap.Load(name)
++	if ok {
++		return value.(bool)
++	}
++
++	isIgnored := false
+ 	for _, ignore := range f.ignored {
+ 		if plugin.Name(ignore).Matches(name) {
+-			return false
++			isIgnored = true
++			break
+ 		}
+ 	}
+-	return true
++
++	f.ignoredMap.Store(name, !isIgnored)
++
++	return !isIgnored
+ }
+ 
+ // ForceTCP returns if TCP is forced to be used even when the request comes in over UDP.
+-- 
+2.27.0.windows.1
+
